@@ -618,7 +618,7 @@ fn sign(
         for i in 0..ttag {
             let mut miu_randomness_vec = Vec::new();
             for j in 0..ttag - 1 {
-                let rand = GlobalStatePhase6::extract_paillier_randomness(
+                let rand = GlobalStatePhase6::<Secp256k1>::extract_paillier_randomness(
                     &m_b_w_vec_all[i][j].c,
                     &party_keys_vec[s[i]].dk,
                 );
@@ -768,7 +768,7 @@ fn test_serialize_deserialize() {
 #[test]
 fn test_small_paillier() {
     // parties shouldn't be able to choose small Paillier modulus
-    let mut k = Keys::create(0);
+    let mut k = Keys::<Secp256k1>::create(0);
     // creating 2046-bit Paillier
     let (ek, dk) = Paillier::keypair_with_modulus_size(2046).keys();
     k.dk = dk;

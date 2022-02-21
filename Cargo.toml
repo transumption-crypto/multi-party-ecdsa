@@ -29,6 +29,11 @@ crate-type = ["lib"]
 default = ["curv-kzen/rust-gmp-kzen"]
 cclst = ["class_group"]
 
+[patch.crates-io]
+bulletproof-kzen = { path = "../bulletproofs" }
+centipede = { path = "../centipede" }
+curv-kzen = { path = "../curv" }
+
 [dependencies]
 subtle = { version = "2" }
 serde = { version = "1.0", features = ["derive"] }

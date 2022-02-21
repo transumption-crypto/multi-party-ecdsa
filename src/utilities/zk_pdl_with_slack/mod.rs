@@ -24,7 +24,7 @@
 
 use curv::arithmetic::traits::*;
 use curv::cryptographic_primitives::hashing::{Digest, DigestExt};
-use curv::elliptic::curves::{secp256_k1::Secp256k1, Point, Scalar};
+use curv::elliptic::curves::{secp256_k1::Secp256k1, Curve, Point, Scalar};
 use curv::BigInt;
 use paillier::EncryptionKey;
 use serde::{Deserialize, Serialize};
@@ -38,25 +38,25 @@ pub enum ZkPdlWithSlackError {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PDLwSlackStatement {
+pub struct PDLwSlackStatement<E: Curve = Secp256k1> {
     pub ciphertext: BigInt,
     pub ek: EncryptionKey,
-    pub Q: Point<Secp256k1>,
-    pub G: Point<Secp256k1>,
+    pub Q: Point<E>,
+    pub G: Point<E>,
     pub h1: BigInt,
     pub h2: BigInt,
     pub N_tilde: BigInt,
 }
 #[derive(Clone)]
-pub struct PDLwSlackWitness {
-    pub x: Scalar<Secp256k1>,
+pub struct PDLwSlackWitness<E: Curve = Secp256k1> {
+    pub x: Scalar<E>,
     pub r: BigInt,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PDLwSlackProof {
+pub struct PDLwSlackProof<E: Curve = Secp256k1> {
     z: BigInt,
-    u1: Point<Secp256k1>,
+    u1: Point<E>,
     u2: BigInt,
     u3: BigInt,
     s1: BigInt,
@@ -64,10 +64,10 @@ pub struct PDLwSlackProof {
     s3: BigInt,
 }
 
-impl PDLwSlackProof {
-    pub fn prove(witness: &PDLwSlackWitness, statement: &PDLwSlackStatement) -> Self {
-        let q3 = Scalar::<Secp256k1>::group_order().pow(3);
-        let q_N_tilde = Scalar::<Secp256k1>::group_order() * &statement.N_tilde;
+impl<E> PDLwSlackProof<E> where E: Curve {
+    pub fn prove(witness: &PDLwSlackWitness<E>, statement: &PDLwSlackStatement<E>) -> Self {
+        let q3 = Scalar::<E>::group_order().pow(3);
+        let q_N_tilde = Scalar::<E>::group_order() * &statement.N_tilde;
         let q3_N_tilde = &q3 * &statement.N_tilde;
 
         let alpha = BigInt::sample_below(&q3);
@@ -83,7 +83,7 @@ impl PDLwSlackProof {
             &witness.x.to_bigint(),
             &rho,
         );
-        let u1 = &statement.G * &Scalar::<Secp256k1>::from(&alpha);
+        let u1 = &statement.G * &Scalar::<E>::from(&alpha);
         let u2 = commitment_unknown_order(
             &(&statement.ek.n + BigInt::one()),
             &beta,
@@ -124,7 +124,7 @@ impl PDLwSlackProof {
         }
     }
 
-    pub fn verify(&self, statement: &PDLwSlackStatement) -> Result<(), ZkPdlWithSlackError> {
+    pub fn verify(&self, statement: &PDLwSlackStatement<E>) -> Result<(), ZkPdlWithSlackError> {
         let e = Sha256::new()
             .chain_bigint(&BigInt::from_bytes(statement.G.to_bytes(true).as_ref()))
             .chain_bigint(&BigInt::from_bytes(statement.Q.to_bytes(true).as_ref()))
@@ -135,9 +135,9 @@ impl PDLwSlackProof {
             .chain_bigint(&self.u3)
             .result_bigint();
 
-        let g_s1 = statement.G.clone() * &Scalar::<Secp256k1>::from(&self.s1);
-        let e_fe_neg: Scalar<Secp256k1> =
-            Scalar::<Secp256k1>::from(&(Scalar::<Secp256k1>::group_order() - &e));
+        let g_s1 = statement.G.clone() * &Scalar::<E>::from(&self.s1);
+        let e_fe_neg: Scalar<E> =
+            Scalar::<E>::from(&(Scalar::<E>::group_order() - &e));
         let y_minus_e = &statement.Q * &e_fe_neg;
         let u1_test = g_s1 + y_minus_e;
 

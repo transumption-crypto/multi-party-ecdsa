@@ -20,12 +20,13 @@
 //! witness (x, r, sk) such that Q = xG, c = Enc(pk, x, r) and Dec(sk, c) = x.
 //! note that because of the range proof, the proof is sound only for x < q/3
 
+use std::marker::PhantomData;
 use std::ops::Shl;
 
 use curv::arithmetic::traits::*;
 use curv::cryptographic_primitives::commitments::hash_commitment::HashCommitment;
 use curv::cryptographic_primitives::commitments::traits::Commitment;
-use curv::elliptic::curves::{secp256_k1::Secp256k1, Point, Scalar};
+use curv::elliptic::curves::{secp256_k1::Secp256k1, Curve, Point, Scalar};
 use curv::BigInt;
 use paillier::Paillier;
 use paillier::{Add, Decrypt, Encrypt, Mul};
@@ -45,33 +46,33 @@ pub enum ZkPdlError {
 }
 
 #[derive(Clone)]
-pub struct PDLStatement {
+pub struct PDLStatement<E: Curve = Secp256k1> {
     pub ciphertext: BigInt,
     pub ek: EncryptionKey,
-    pub Q: Point<Secp256k1>,
-    pub G: Point<Secp256k1>,
+    pub Q: Point<E>,
+    pub G: Point<E>,
 }
 #[derive(Clone)]
-pub struct PDLWitness {
-    pub x: Scalar<Secp256k1>,
+pub struct PDLWitness<E: Curve = Secp256k1> {
+    pub x: Scalar<E>,
     pub r: BigInt,
     pub dk: DecryptionKey,
 }
 
 #[derive(Debug, Clone)]
-pub struct PDLVerifierState {
+pub struct PDLVerifierState<E: Curve = Secp256k1> {
     pub c_tag: BigInt,
     pub c_tag_tag: BigInt,
     a: BigInt,
     b: BigInt,
     blindness: BigInt,
-    q_tag: Point<Secp256k1>,
+    q_tag: Point<E>,
     c_hat: BigInt,
 }
 
 #[derive(Debug, Clone)]
-pub struct PDLProverState {
-    pub decommit: PDLProverDecommit,
+pub struct PDLProverState<E: Curve = Secp256k1> {
+    pub decommit: PDLProverDecommit<E>,
     pub alpha: BigInt,
 }
 
@@ -95,27 +96,32 @@ pub struct PDLVerifierSecondMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PDLProverDecommit {
-    pub q_hat: Point<Secp256k1>,
+pub struct PDLProverDecommit<E: Curve = Secp256k1> {
+    pub q_hat: Point<E>,
     pub blindness: BigInt,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PDLProverSecondMessage {
-    pub decommit: PDLProverDecommit,
+pub struct PDLProverSecondMessage<E: Curve = Secp256k1> {
+    pub decommit: PDLProverDecommit<E>,
 }
 
-pub struct Prover {}
-pub struct Verifier {}
+pub struct Prover<E: Curve = Secp256k1> {
+    pub _curve: PhantomData<E>
+}
 
-impl Verifier {
-    pub fn message1(statement: &PDLStatement) -> (PDLVerifierFirstMessage, PDLVerifierState) {
-        let a_fe = Scalar::<Secp256k1>::random();
+pub struct Verifier<E: Curve = Secp256k1> {
+    pub _curve: PhantomData<E>
+}
+
+impl<E> Verifier<E> where E: Curve {
+    pub fn message1(statement: &PDLStatement<E>) -> (PDLVerifierFirstMessage, PDLVerifierState<E>) {
+        let a_fe = Scalar::<E>::random();
         let a = a_fe.to_bigint();
-        let q = Scalar::<Secp256k1>::group_order();
+        let q = Scalar::<E>::group_order();
         let q_sq = q.pow(2);
         let b = BigInt::sample_below(&q_sq);
-        let b_fe = Scalar::<Secp256k1>::from(&b);
+        let b_fe = Scalar::<E>::from(&b);
         let b_enc = Paillier::encrypt(&statement.ek, RawPlaintext::from(b.clone()));
         let ac = Paillier::mul(
             &statement.ek,
@@ -149,8 +155,8 @@ impl Verifier {
 
     pub fn message2(
         prover_first_messasge: &PDLProverFirstMessage,
-        statement: &PDLStatement,
-        state: &mut PDLVerifierState,
+        statement: &PDLStatement<E>,
+        state: &mut PDLVerifierState<E>,
     ) -> Result<PDLVerifierSecondMessage, ZkPdlError> {
         let decommit_message = PDLVerifierSecondMessage {
             a: state.a.clone(),
@@ -169,8 +175,8 @@ impl Verifier {
 
     pub fn finalize(
         prover_first_message: &PDLProverFirstMessage,
-        prover_second_message: &PDLProverSecondMessage,
-        state: &PDLVerifierState,
+        prover_second_message: &PDLProverSecondMessage<E>,
+        state: &PDLVerifierState<E>,
     ) -> Result<(), ZkPdlError> {
         let c_hat_test = HashCommitment::<Sha256>::create_commitment_with_user_defined_randomness(
             &BigInt::from_bytes(prover_second_message.decommit.q_hat.to_bytes(true).as_ref()),
@@ -187,17 +193,17 @@ impl Verifier {
     }
 }
 
-impl Prover {
+impl<E> Prover<E> where E: Curve {
     pub fn message1(
-        witness: &PDLWitness,
-        statement: &PDLStatement,
+        witness: &PDLWitness<E>,
+        statement: &PDLStatement<E>,
         verifier_first_message: &PDLVerifierFirstMessage,
-    ) -> (PDLProverFirstMessage, PDLProverState) {
+    ) -> (PDLProverFirstMessage, PDLProverState<E>) {
         let c_tag = verifier_first_message.c_tag.clone();
         let alpha = Paillier::decrypt(&witness.dk, &RawCiphertext::from(c_tag));
-        let alpha_fe = Scalar::<Secp256k1>::from(alpha.0.as_ref());
+        let alpha_fe = Scalar::<E>::from(alpha.0.as_ref());
         let q_hat = &statement.G * alpha_fe;
-        let blindness = BigInt::sample_below(Scalar::<Secp256k1>::group_order());
+        let blindness = BigInt::sample_below(Scalar::<E>::group_order());
         let c_hat = HashCommitment::<Sha256>::create_commitment_with_user_defined_randomness(
             &BigInt::from_bytes(q_hat.to_bytes(true).as_ref()),
             &blindness,
@@ -216,9 +222,9 @@ impl Prover {
     pub fn message2(
         verifier_first_message: &PDLVerifierFirstMessage,
         verifier_second_message: &PDLVerifierSecondMessage,
-        witness: &PDLWitness,
-        state: &PDLProverState,
-    ) -> Result<PDLProverSecondMessage, ZkPdlError> {
+        witness: &PDLWitness<E>,
+        state: &PDLProverState<E>,
+    ) -> Result<PDLProverSecondMessage<E>, ZkPdlError> {
         let ab_concat = &verifier_second_message.a
             + verifier_second_message
                 .b
@@ -241,18 +247,18 @@ impl Prover {
     }
 }
 
-fn generate_range_proof(statement: &PDLStatement, witness: &PDLWitness) -> RangeProofNi {
+fn generate_range_proof<E: Curve>(statement: &PDLStatement<E>, witness: &PDLWitness<E>) -> RangeProofNi {
     RangeProofNi::prove(
         &statement.ek,
-        Scalar::<Secp256k1>::group_order(),
+        Scalar::<E>::group_order(),
         &statement.ciphertext,
         &witness.x.to_bigint(),
         &witness.r,
     )
 }
 
-fn verify_range_proof(
-    statement: &PDLStatement,
+fn verify_range_proof<E: Curve>(
+    statement: &PDLStatement<E>,
     range_proof: &RangeProofNi,
 ) -> Result<(), IncorrectProof> {
     range_proof.verify(&statement.ek, &statement.ciphertext)

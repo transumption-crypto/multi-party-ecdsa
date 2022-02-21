@@ -17,7 +17,7 @@
 /// MtA is described in https://eprint.iacr.org/2019/114.pdf section 3
 use curv::arithmetic::traits::Samplable;
 use curv::cryptographic_primitives::proofs::sigma_dlog::DLogProof;
-use curv::elliptic::curves::{secp256_k1::Secp256k1, Point, Scalar};
+use curv::elliptic::curves::{secp256_k1::Secp256k1, Curve, Point, Scalar};
 use curv::BigInt;
 use paillier::traits::EncryptWithChosenRandomness;
 use paillier::{Add, Decrypt, Mul};
@@ -26,41 +26,43 @@ use zk_paillier::zkproofs::DLogStatement;
 
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::marker::PhantomData;
 
 use crate::protocols::multi_party_ecdsa::gg_2018::party_i::PartyPrivate;
 use crate::utilities::mta::range_proofs::AliceProof;
 use crate::Error::{self, InvalidKey};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MessageA {
+pub struct MessageA<E: Curve = Secp256k1> {
     pub c: BigInt,                     // paillier encryption
     pub range_proofs: Vec<AliceProof>, // proofs (using other parties' h1,h2,N_tilde) that the plaintext is small
+    pub _curve: PhantomData<E>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MessageB {
+pub struct MessageB<E: Curve = Secp256k1> {
     pub c: BigInt, // paillier encryption
-    pub b_proof: DLogProof<Secp256k1, Sha256>,
-    pub beta_tag_proof: DLogProof<Secp256k1, Sha256>,
+    pub b_proof: DLogProof<E, Sha256>,
+    pub beta_tag_proof: DLogProof<E, Sha256>,
 }
 
-impl MessageA {
+impl<E> MessageA<E> where E: Curve {
     /// Creates a new `messageA` using Alice's Paillier encryption key and `dlog_statements`
     /// - other parties' `h1,h2,N_tilde`s for range proofs.
     /// If range proofs are not needed (one example is identification of aborts where we
     /// only want to reconstruct a ciphertext), `dlog_statements` can be an empty slice.
     pub fn a(
-        a: &Scalar<Secp256k1>,
+        a: &Scalar<E>,
         alice_ek: &EncryptionKey,
         dlog_statements: &[DLogStatement],
     ) -> (Self, BigInt) {
         let randomness = BigInt::sample_below(&alice_ek.n);
-        let m_a = MessageA::a_with_predefined_randomness(a, alice_ek, &randomness, dlog_statements);
+        let m_a = Self::a_with_predefined_randomness(a, alice_ek, &randomness, dlog_statements);
         (m_a, randomness)
     }
 
     pub fn a_with_predefined_randomness(
-        a: &Scalar<Secp256k1>,
+        a: &Scalar<E>,
         alice_ek: &EncryptionKey,
         randomness: &BigInt,
         dlog_statements: &[DLogStatement],
@@ -83,20 +85,21 @@ impl MessageA {
         Self {
             c: c_a,
             range_proofs: alice_range_proofs,
+            _curve: PhantomData,
         }
     }
 }
 
-impl MessageB {
+impl<E> MessageB<E> where E: Curve {
     pub fn b(
-        b: &Scalar<Secp256k1>,
+        b: &Scalar<E>,
         alice_ek: &EncryptionKey,
-        m_a: MessageA,
+        m_a: MessageA<E>,
         dlog_statements: &[DLogStatement],
-    ) -> Result<(Self, Scalar<Secp256k1>, BigInt, BigInt), Error> {
+    ) -> Result<(Self, Scalar<E>, BigInt, BigInt), Error> {
         let beta_tag = BigInt::sample_below(&alice_ek.n);
         let randomness = BigInt::sample_below(&alice_ek.n);
-        let (m_b, beta) = MessageB::b_with_predefined_randomness(
+        let (m_b, beta) = Self::b_with_predefined_randomness(
             b,
             alice_ek,
             m_a,
@@ -109,13 +112,13 @@ impl MessageB {
     }
 
     pub fn b_with_predefined_randomness(
-        b: &Scalar<Secp256k1>,
+        b: &Scalar<E>,
         alice_ek: &EncryptionKey,
-        m_a: MessageA,
+        m_a: MessageA<E>,
         randomness: &BigInt,
         beta_tag: &BigInt,
         dlog_statements: &[DLogStatement],
-    ) -> Result<(Self, Scalar<Secp256k1>), Error> {
+    ) -> Result<(Self, Scalar<E>), Error> {
         if m_a.range_proofs.len() != dlog_statements.len() {
             return Err(InvalidKey);
         }
@@ -129,7 +132,7 @@ impl MessageB {
         {
             return Err(InvalidKey);
         };
-        let beta_tag_fe = Scalar::<Secp256k1>::from(beta_tag);
+        let beta_tag_fe = Scalar::<E>::from(beta_tag);
         let c_beta_tag = Paillier::encrypt_with_chosen_randomness(
             alice_ek,
             RawPlaintext::from(beta_tag),
@@ -143,7 +146,7 @@ impl MessageB {
             RawPlaintext::from(b_bn),
         );
         let c_b = Paillier::add(alice_ek, b_c_a, c_beta_tag);
-        let beta = Scalar::<Secp256k1>::zero() - &beta_tag_fe;
+        let beta = Scalar::<E>::zero() - &beta_tag_fe;
         let dlog_proof_b = DLogProof::prove(b);
         let dlog_proof_beta_tag = DLogProof::prove(&beta_tag_fe);
 
@@ -160,11 +163,11 @@ impl MessageB {
     pub fn verify_proofs_get_alpha(
         &self,
         dk: &DecryptionKey,
-        a: &Scalar<Secp256k1>,
-    ) -> Result<(Scalar<Secp256k1>, BigInt), Error> {
+        a: &Scalar<E>,
+    ) -> Result<(Scalar<E>, BigInt), Error> {
         let alice_share = Paillier::decrypt(dk, &RawCiphertext::from(self.c.clone()));
         let g = Point::generator();
-        let alpha = Scalar::<Secp256k1>::from(alice_share.0.as_ref());
+        let alpha = Scalar::<E>::from(alice_share.0.as_ref());
         let g_alpha = g * &alpha;
         let ba_btag = &self.b_proof.pk * a + &self.beta_tag_proof.pk;
         if DLogProof::verify(&self.b_proof).is_ok()
@@ -183,11 +186,11 @@ impl MessageB {
     pub fn verify_proofs_get_alpha_gg18(
         &self,
         private: &PartyPrivate,
-        a: &Scalar<Secp256k1>,
-    ) -> Result<Scalar<Secp256k1>, Error> {
+        a: &Scalar<E>,
+    ) -> Result<Scalar<E>, Error> {
         let alice_share = private.decrypt(self.c.clone());
         let g = Point::generator();
-        let alpha = Scalar::<Secp256k1>::from(alice_share.0.as_ref());
+        let alpha = Scalar::<E>::from(alice_share.0.as_ref());
         let g_alpha = g * &alpha;
         let ba_btag = &self.b_proof.pk * a + &self.beta_tag_proof.pk;
 
@@ -202,8 +205,8 @@ impl MessageB {
     }
 
     pub fn verify_b_against_public(
-        public_gb: &Point<Secp256k1>,
-        mta_gb: &Point<Secp256k1>,
+        public_gb: &Point<E>,
+        mta_gb: &Point<E>,
     ) -> bool {
         public_gb == mta_gb
     }

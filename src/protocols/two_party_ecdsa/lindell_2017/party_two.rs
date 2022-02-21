@@ -30,6 +30,7 @@ use paillier::{Add, Encrypt, Mul};
 use paillier::{EncryptionKey, RawCiphertext, RawPlaintext};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::marker::PhantomData;
 use zk_paillier::zkproofs::{IncorrectProof, NiCorrectKeyProof};
 
 use super::party_one::EphKeyGenFirstMsg as Party1EphKeyGenFirstMsg;
@@ -265,6 +266,7 @@ impl Party2Private {
         let message_a = MessageA {
             c: ciphertext.clone(),
             range_proofs: vec![],
+            _curve: PhantomData,
         };
         let (a, b, _, _) = MessageB::b(&self.x2, ek, message_a, &[]).unwrap();
         (a, b)

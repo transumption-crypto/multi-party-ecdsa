@@ -70,9 +70,9 @@ pub struct Keys<E: Curve = Secp256k1> {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PartyPrivate {
-    u_i: Scalar<Secp256k1>,
-    x_i: Scalar<Secp256k1>,
+pub struct PartyPrivate<E: Curve = Secp256k1> {
+    u_i: Scalar<E>,
+    x_i: Scalar<E>,
     dk: DecryptionKey,
 }
 
@@ -87,24 +87,24 @@ pub struct KeyGenBroadcastMessage1 {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct KeyGenDecommitMessage1 {
+pub struct KeyGenDecommitMessage1<E: Curve = Secp256k1> {
     pub blind_factor: BigInt,
-    pub y_i: Point<Secp256k1>,
+    pub y_i: Point<E>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SharedKeys {
-    pub y: Point<Secp256k1>,
-    pub x_i: Scalar<Secp256k1>,
+pub struct SharedKeys<E: Curve = Secp256k1> {
+    pub y: Point<E>,
+    pub x_i: Scalar<E>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SignKeys {
-    pub w_i: Scalar<Secp256k1>,
-    pub g_w_i: Point<Secp256k1>,
-    pub k_i: Scalar<Secp256k1>,
-    pub gamma_i: Scalar<Secp256k1>,
-    pub g_gamma_i: Point<Secp256k1>,
+pub struct SignKeys<E: Curve = Secp256k1> {
+    pub w_i: Scalar<E>,
+    pub g_w_i: Point<E>,
+    pub k_i: Scalar<E>,
+    pub gamma_i: Scalar<E>,
+    pub g_gamma_i: Point<E>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -113,24 +113,24 @@ pub struct SignBroadcastPhase1 {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SignDecommitPhase1 {
+pub struct SignDecommitPhase1<E: Curve = Secp256k1> {
     pub blind_factor: BigInt,
-    pub g_gamma_i: Point<Secp256k1>,
+    pub g_gamma_i: Point<E>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LocalSignature {
-    pub r: Scalar<Secp256k1>,
-    pub R: Point<Secp256k1>,
-    pub s_i: Scalar<Secp256k1>,
+pub struct LocalSignature<E: Curve = Secp256k1> {
+    pub r: Scalar<E>,
+    pub R: Point<E>,
+    pub s_i: Scalar<E>,
     pub m: BigInt,
-    pub y: Point<Secp256k1>,
+    pub y: Point<E>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SignatureRecid {
-    pub r: Scalar<Secp256k1>,
-    pub s: Scalar<Secp256k1>,
+pub struct SignatureRecid<E: Curve = Secp256k1> {
+    pub r: Scalar<E>,
+    pub s: Scalar<E>,
     pub recid: u8,
 }
 
@@ -155,9 +155,9 @@ pub fn generate_h1_h2_N_tilde() -> (BigInt, BigInt, BigInt, BigInt, BigInt) {
     (ek_tilde.n, h1, h2, xhi, xhi_inv)
 }
 
-impl Keys {
+impl<E> Keys<E> where E: Curve {
     pub fn create(index: usize) -> Self {
-        let u = Scalar::<Secp256k1>::random();
+        let u = Scalar::<E>::random();
         let y = Point::generator() * &u;
         let (ek, dk) = Paillier::keypair().keys();
         let (N_tilde, h1, h2, xhi, xhi_inv) = generate_h1_h2_N_tilde();
@@ -178,7 +178,7 @@ impl Keys {
 
     // we recommend using safe primes if the code is used in production
     pub fn create_safe_prime(index: usize) -> Self {
-        let u = Scalar::<Secp256k1>::random();
+        let u = Scalar::<E>::random();
         let y = Point::generator() * &u;
 
         let (ek, dk) = Paillier::keypair_safe_primes().keys();
@@ -197,7 +197,7 @@ impl Keys {
             xhi_inv,
         }
     }
-    pub fn create_from(u: Scalar<Secp256k1>, index: usize) -> Self {
+    pub fn create_from(u: Scalar<E>, index: usize) -> Self {
         let y = Point::generator() * &u;
         let (ek, dk) = Paillier::keypair().keys();
         let (N_tilde, h1, h2, xhi, xhi_inv) = generate_h1_h2_N_tilde();
@@ -218,7 +218,7 @@ impl Keys {
 
     pub fn phase1_broadcast_phase3_proof_of_correct_key_proof_of_correct_h1h2(
         &self,
-    ) -> (KeyGenBroadcastMessage1, KeyGenDecommitMessage1) {
+    ) -> (KeyGenBroadcastMessage1, KeyGenDecommitMessage1::<E>) {
         let blind_factor = BigInt::sample(SECURITY);
         let correct_key_proof = NiCorrectKeyProof::proof(&self.dk, None);
 
@@ -260,9 +260,9 @@ impl Keys {
     pub fn phase1_verify_com_phase3_verify_correct_key_verify_dlog_phase2_distribute(
         &self,
         params: &Parameters,
-        decom_vec: &[KeyGenDecommitMessage1],
+        decom_vec: &[KeyGenDecommitMessage1<E>],
         bc1_vec: &[KeyGenBroadcastMessage1],
-    ) -> Result<(VerifiableSS<Secp256k1>, Vec<Scalar<Secp256k1>>, usize), ErrorType> {
+    ) -> Result<(VerifiableSS<E>, Vec<Scalar<E>>, usize), ErrorType> {
         let mut bad_actors_vec = Vec::new();
         // test length:
         assert_eq!(decom_vec.len(), usize::from(params.share_count));
@@ -322,11 +322,11 @@ impl Keys {
     pub fn phase2_verify_vss_construct_keypair_phase3_pok_dlog(
         &self,
         params: &Parameters,
-        y_vec: &[Point<Secp256k1>],
-        secret_shares_vec: &[Scalar<Secp256k1>],
-        vss_scheme_vec: &[VerifiableSS<Secp256k1>],
+        y_vec: &[Point<E>],
+        secret_shares_vec: &[Scalar<E>],
+        vss_scheme_vec: &[VerifiableSS<E>],
         index: usize,
-    ) -> Result<(SharedKeys, DLogProof<Secp256k1, Sha256>), ErrorType> {
+    ) -> Result<(SharedKeys<E>, DLogProof<E, Sha256>), ErrorType> {
         let mut bad_actors_vec = Vec::new();
         assert_eq!(y_vec.len(), usize::from(params.share_count));
         assert_eq!(secret_shares_vec.len(), usize::from(params.share_count));
@@ -358,7 +358,7 @@ impl Keys {
 
             let x_i = secret_shares_vec
                 .iter()
-                .fold(Scalar::<Secp256k1>::zero(), |acc, x| acc + x);
+                .fold(Scalar::<E>::zero(), |acc, x| acc + x);
             let dlog_proof = DLogProof::prove(&x_i);
             Ok((SharedKeys { y, x_i }, dlog_proof))
         } else {
@@ -367,8 +367,8 @@ impl Keys {
     }
 
     pub fn get_commitments_to_xi(
-        vss_scheme_vec: &[VerifiableSS<Secp256k1>],
-    ) -> Vec<Point<Secp256k1>> {
+        vss_scheme_vec: &[VerifiableSS<E>],
+    ) -> Vec<Point<E>> {
         let len = vss_scheme_vec.len();
         let (head, tail) = vss_scheme_vec.split_at(1);
         let mut global_coefficients = head[0].commitments.clone();
@@ -384,17 +384,17 @@ impl Keys {
         };
         (1..=len)
             .map(|i| global_vss.get_point_commitment(i.try_into().unwrap()))
-            .collect::<Vec<Point<Secp256k1>>>()
+            .collect::<Vec<Point<E>>>()
     }
 
     pub fn update_commitments_to_xi(
-        comm: &Point<Secp256k1>,
-        vss_scheme: &VerifiableSS<Secp256k1>,
+        comm: &Point<E>,
+        vss_scheme: &VerifiableSS<E>,
         index: usize,
         s: &[usize],
-    ) -> Point<Secp256k1> {
+    ) -> Point<E> {
         let s: Vec<u16> = s.iter().map(|&i| i.try_into().unwrap()).collect();
-        let li = VerifiableSS::<Secp256k1>::map_share_to_new_params(
+        let li = VerifiableSS::<E>::map_share_to_new_params(
             &vss_scheme.parameters,
             index.try_into().unwrap(),
             s.as_slice(),
@@ -404,9 +404,9 @@ impl Keys {
 
     pub fn verify_dlog_proofs_check_against_vss(
         params: &Parameters,
-        dlog_proofs_vec: &[DLogProof<Secp256k1, Sha256>],
-        y_vec: &[Point<Secp256k1>],
-        vss_vec: &[VerifiableSS<Secp256k1>],
+        dlog_proofs_vec: &[DLogProof<E, Sha256>],
+        y_vec: &[Point<E>],
+        vss_vec: &[VerifiableSS<E>],
     ) -> Result<(), ErrorType> {
         let mut bad_actors_vec = Vec::new();
         assert_eq!(y_vec.len(), usize::from(params.share_count));
@@ -438,8 +438,8 @@ impl Keys {
     }
 }
 
-impl PartyPrivate {
-    pub fn set_private(key: Keys, shared_key: SharedKeys) -> Self {
+impl<E> PartyPrivate<E> where E: Curve {
+    pub fn set_private(key: Keys<E>, shared_key: SharedKeys<E>) -> Self {
         Self {
             u_i: key.u_i,
             x_i: shared_key.x_i,
@@ -447,7 +447,7 @@ impl PartyPrivate {
         }
     }
 
-    pub fn y_i(&self) -> Point<Secp256k1> {
+    pub fn y_i(&self) -> Point<E> {
         let g = Point::generator();
         g * &self.u_i
     }
@@ -456,8 +456,8 @@ impl PartyPrivate {
         Paillier::decrypt(&self.dk, &RawCiphertext::from(ciphertext))
     }
 
-    pub fn refresh_private_key(&self, factor: &Scalar<Secp256k1>, index: usize) -> Keys {
-        let u: Scalar<Secp256k1> = &self.u_i + factor;
+    pub fn refresh_private_key(&self, factor: &Scalar<E>, index: usize) -> Keys<E> {
+        let u: Scalar<E> = &self.u_i + factor;
         let y = Point::generator() * &u;
         let (ek, dk) = Paillier::keypair().keys();
 
@@ -478,8 +478,8 @@ impl PartyPrivate {
     }
 
     // we recommend using safe primes if the code is used in production
-    pub fn refresh_private_key_safe_prime(&self, factor: &Scalar<Secp256k1>, index: usize) -> Keys {
-        let u: Scalar<Secp256k1> = &self.u_i + factor;
+    pub fn refresh_private_key_safe_prime(&self, factor: &Scalar<E>, index: usize) -> Keys<E> {
+        let u: Scalar<E> = &self.u_i + factor;
         let y = Point::generator() * &u;
         let (ek, dk) = Paillier::keypair_safe_primes().keys();
 
@@ -504,18 +504,18 @@ impl PartyPrivate {
         &self,
         segment_size: usize,
         num_of_segments: usize,
-        pub_ke_y: &Point<Secp256k1>,
-        g: &Point<Secp256k1>,
-    ) -> (Witness, Helgamalsegmented) {
-        Msegmentation::to_encrypted_segments(&self.u_i, &segment_size, num_of_segments, pub_ke_y, g)
+        pub_ke_y: &Point<E>,
+        g: &Point<E>,
+    ) -> (Witness<E>, Helgamalsegmented<E>) {
+        Msegmentation::<E>::to_encrypted_segments(&self.u_i, &segment_size, num_of_segments, pub_ke_y, g)
     }
 
     pub fn update_private_key(
         &self,
-        factor_u_i: &Scalar<Secp256k1>,
-        factor_x_i: &Scalar<Secp256k1>,
+        factor_u_i: &Scalar<E>,
+        factor_x_i: &Scalar<E>,
     ) -> Self {
-        PartyPrivate {
+        Self {
             u_i: &self.u_i + factor_u_i,
             x_i: &self.x_i + factor_x_i,
             dk: self.dk.clone(),
@@ -523,34 +523,34 @@ impl PartyPrivate {
     }
 }
 
-impl SignKeys {
+impl<E> SignKeys<E> where E: Curve {
     pub fn g_w_vec(
-        pk_vec: &[Point<Secp256k1>],
+        pk_vec: &[Point<E>],
         s: &[usize],
-        vss_scheme: &VerifiableSS<Secp256k1>,
-    ) -> Vec<Point<Secp256k1>> {
+        vss_scheme: &VerifiableSS<E>,
+    ) -> Vec<Point<E>> {
         let s: Vec<u16> = s.iter().map(|&i| i.try_into().unwrap()).collect();
         // TODO: check bounds
         (0..s.len())
             .map(|i| {
-                let li = VerifiableSS::<Secp256k1>::map_share_to_new_params(
+                let li = VerifiableSS::<E>::map_share_to_new_params(
                     &vss_scheme.parameters,
                     s[i],
                     s.as_slice(),
                 );
                 &pk_vec[s[i] as usize] * &li
             })
-            .collect::<Vec<Point<Secp256k1>>>()
+            .collect::<Vec<Point<E>>>()
     }
 
     pub fn create(
-        private_x_i: &Scalar<Secp256k1>,
-        vss_scheme: &VerifiableSS<Secp256k1>,
+        private_x_i: &Scalar<E>,
+        vss_scheme: &VerifiableSS<E>,
         index: usize,
         s: &[usize],
     ) -> Self {
         let s: Vec<u16> = s.iter().map(|&i| i.try_into().unwrap()).collect();
-        let li = VerifiableSS::<Secp256k1>::map_share_to_new_params(
+        let li = VerifiableSS::<E>::map_share_to_new_params(
             &vss_scheme.parameters,
             index.try_into().unwrap(),
             s.as_slice(),
@@ -558,9 +558,9 @@ impl SignKeys {
         let w_i = li * private_x_i;
         let g = Point::generator();
         let g_w_i = g * &w_i;
-        let gamma_i = Scalar::<Secp256k1>::random();
+        let gamma_i = Scalar::<E>::random();
         let g_gamma_i = g * &gamma_i;
-        let k_i = Scalar::<Secp256k1>::random();
+        let k_i = Scalar::<E>::random();
         Self {
             w_i,
             g_w_i,
@@ -570,7 +570,7 @@ impl SignKeys {
         }
     }
 
-    pub fn phase1_broadcast(&self) -> (SignBroadcastPhase1, SignDecommitPhase1) {
+    pub fn phase1_broadcast(&self) -> (SignBroadcastPhase1, SignDecommitPhase1<E>) {
         let blind_factor = BigInt::sample(SECURITY);
         let g = Point::generator();
         let g_gamma_i = g * &self.gamma_i;
@@ -590,9 +590,9 @@ impl SignKeys {
 
     pub fn phase2_delta_i(
         &self,
-        alpha_vec: &[Scalar<Secp256k1>],
-        beta_vec: &[Scalar<Secp256k1>],
-    ) -> Scalar<Secp256k1> {
+        alpha_vec: &[Scalar<E>],
+        beta_vec: &[Scalar<E>],
+    ) -> Scalar<E> {
         let vec_len = alpha_vec.len();
         assert_eq!(alpha_vec.len(), beta_vec.len());
         // assert_eq!(alpha_vec.len(), self.s.len() - 1);
@@ -605,9 +605,9 @@ impl SignKeys {
 
     pub fn phase2_sigma_i(
         &self,
-        miu_vec: &[Scalar<Secp256k1>],
-        ni_vec: &[Scalar<Secp256k1>],
-    ) -> Scalar<Secp256k1> {
+        miu_vec: &[Scalar<E>],
+        ni_vec: &[Scalar<E>],
+    ) -> Scalar<E> {
         let vec_len = miu_vec.len();
         assert_eq!(miu_vec.len(), ni_vec.len());
         //assert_eq!(miu_vec.len(), self.s.len() - 1);
@@ -618,34 +618,34 @@ impl SignKeys {
     }
 
     pub fn phase3_compute_t_i(
-        sigma_i: &Scalar<Secp256k1>,
+        sigma_i: &Scalar<E>,
     ) -> (
-        Point<Secp256k1>,
-        Scalar<Secp256k1>,
-        PedersenProof<Secp256k1, Sha256>,
+        Point<E>,
+        Scalar<E>,
+        PedersenProof<E, Sha256>,
     ) {
         let g_sigma_i = Point::generator() * sigma_i;
-        let l = Scalar::<Secp256k1>::random();
-        let h_l = Point::<Secp256k1>::base_point2() * &l;
+        let l = Scalar::<E>::random();
+        let h_l = Point::<E>::base_point2() * &l;
         let T = g_sigma_i + h_l;
-        let T_zk_proof = PedersenProof::<Secp256k1, Sha256>::prove(sigma_i, &l);
+        let T_zk_proof = PedersenProof::<E, Sha256>::prove(sigma_i, &l);
 
         (T, l, T_zk_proof)
     }
-    pub fn phase3_reconstruct_delta(delta_vec: &[Scalar<Secp256k1>]) -> Scalar<Secp256k1> {
+    pub fn phase3_reconstruct_delta(delta_vec: &[Scalar<E>]) -> Scalar<E> {
         let sum = delta_vec
             .iter()
-            .fold(Scalar::<Secp256k1>::zero(), |acc, x| acc + x);
+            .fold(Scalar::<E>::zero(), |acc, x| acc + x);
         sum.invert().unwrap()
     }
 
     pub fn phase4(
-        delta_inv: &Scalar<Secp256k1>,
-        b_proof_vec: &[&DLogProof<Secp256k1, Sha256>],
-        phase1_decommit_vec: Vec<SignDecommitPhase1>,
+        delta_inv: &Scalar<E>,
+        b_proof_vec: &[&DLogProof<E, Sha256>],
+        phase1_decommit_vec: Vec<SignDecommitPhase1<E>>,
         bc1_vec: &[SignBroadcastPhase1],
         index: usize,
-    ) -> Result<Point<Secp256k1>, ErrorType> {
+    ) -> Result<Point<E>, ErrorType> {
         let mut bad_actors_vec = Vec::new();
         let test_b_vec_and_com = (0..b_proof_vec.len())
             .map(|j| {
@@ -687,16 +687,16 @@ impl SignKeys {
     }
 }
 
-impl LocalSignature {
+impl<E> LocalSignature<E> where E: Curve {
     pub fn phase5_proof_pdl(
-        R_dash: &Point<Secp256k1>,
-        R: &Point<Secp256k1>,
+        R_dash: &Point<E>,
+        R: &Point<E>,
         k_ciphertext: &BigInt,
         ek: &EncryptionKey,
-        k_i: &Scalar<Secp256k1>,
+        k_i: &Scalar<E>,
         k_enc_randomness: &BigInt,
         dlog_statement: &DLogStatement,
-    ) -> PDLwSlackProof {
+    ) -> PDLwSlackProof<E> {
         // Generate PDL with slack statement, witness and proof
         let pdl_w_slack_statement = PDLwSlackStatement {
             ciphertext: k_ciphertext.clone(),
@@ -713,13 +713,13 @@ impl LocalSignature {
             r: k_enc_randomness.clone(),
         };
 
-        PDLwSlackProof::prove(&pdl_w_slack_witness, &pdl_w_slack_statement)
+        PDLwSlackProof::<E>::prove(&pdl_w_slack_witness, &pdl_w_slack_statement)
     }
 
     pub fn phase5_verify_pdl(
-        pdl_w_slack_proof_vec: &[PDLwSlackProof],
-        R_dash: &Point<Secp256k1>,
-        R: &Point<Secp256k1>,
+        pdl_w_slack_proof_vec: &[PDLwSlackProof<E>],
+        R_dash: &Point<E>,
+        R: &Point<E>,
         k_ciphertext: &BigInt,
         ek: &EncryptionKey,
         dlog_statement: &[DLogStatement],
@@ -765,7 +765,7 @@ impl LocalSignature {
         Err(err_type)
     }
 
-    pub fn phase5_check_R_dash_sum(R_dash_vec: &[Point<Secp256k1>]) -> Result<(), Error> {
+    pub fn phase5_check_R_dash_sum(R_dash_vec: &[Point<E>]) -> Result<(), Error> {
         let sum = R_dash_vec
             .iter()
             .fold(Point::generator().to_point(), |acc, x| acc + x);
@@ -776,15 +776,15 @@ impl LocalSignature {
     }
 
     pub fn phase6_compute_S_i_and_proof_of_consistency(
-        R: &Point<Secp256k1>,
-        T: &Point<Secp256k1>,
-        sigma: &Scalar<Secp256k1>,
-        l: &Scalar<Secp256k1>,
-    ) -> (Point<Secp256k1>, HomoELGamalProof<Secp256k1, Sha256>) {
+        R: &Point<E>,
+        T: &Point<E>,
+        sigma: &Scalar<E>,
+        l: &Scalar<E>,
+    ) -> (Point<E>, HomoELGamalProof<E, Sha256>) {
         let S = R * sigma;
         let delta = HomoElGamalStatement {
             G: R.clone(),
-            H: Point::<Secp256k1>::base_point2().clone(),
+            H: Point::<E>::base_point2().clone(),
             Y: Point::generator().to_point(),
             D: T.clone(),
             E: S.clone(),
@@ -799,17 +799,17 @@ impl LocalSignature {
     }
 
     pub fn phase6_verify_proof(
-        S_vec: &[Point<Secp256k1>],
-        proof_vec: &[HomoELGamalProof<Secp256k1, Sha256>],
-        R_vec: &[Point<Secp256k1>],
-        T_vec: &[Point<Secp256k1>],
+        S_vec: &[Point<E>],
+        proof_vec: &[HomoELGamalProof<E, Sha256>],
+        R_vec: &[Point<E>],
+        T_vec: &[Point<E>],
     ) -> Result<(), ErrorType> {
         let mut bad_actors_vec = Vec::new();
         let mut verify_proofs = true;
         for i in 0..proof_vec.len() {
             let delta = HomoElGamalStatement {
                 G: R_vec[i].clone(),
-                H: Point::<Secp256k1>::base_point2().clone(),
+                H: Point::<E>::base_point2().clone(),
                 Y: Point::generator().to_point(),
                 D: T_vec[i].clone(),
                 E: S_vec[i].clone(),
@@ -833,8 +833,8 @@ impl LocalSignature {
     }
 
     pub fn phase6_check_S_i_sum(
-        pubkey_y: &Point<Secp256k1>,
-        S_vec: &[Point<Secp256k1>],
+        pubkey_y: &Point<E>,
+        S_vec: &[Point<E>],
     ) -> Result<(), Error> {
         let sum_plus_g = S_vec
             .iter()
@@ -848,17 +848,17 @@ impl LocalSignature {
     }
 
     pub fn phase7_local_sig(
-        k_i: &Scalar<Secp256k1>,
+        k_i: &Scalar<E>,
         message: &BigInt,
-        R: &Point<Secp256k1>,
-        sigma_i: &Scalar<Secp256k1>,
-        pubkey: &Point<Secp256k1>,
+        R: &Point<E>,
+        sigma_i: &Scalar<E>,
+        pubkey: &Point<E>,
     ) -> Self {
-        let m_fe = Scalar::<Secp256k1>::from(message);
-        let r = Scalar::<Secp256k1>::from(
+        let m_fe = Scalar::<E>::from(message);
+        let r = Scalar::<E>::from(
             &R.x_coord()
                 .unwrap()
-                .mod_floor(Scalar::<Secp256k1>::group_order()),
+                .mod_floor(Scalar::<E>::group_order()),
         );
         let s_i = m_fe * k_i + &r * sigma_i;
         Self {
@@ -870,22 +870,22 @@ impl LocalSignature {
         }
     }
 
-    pub fn output_signature(&self, s_vec: &[Scalar<Secp256k1>]) -> Result<SignatureRecid, Error> {
+    pub fn output_signature(&self, s_vec: &[Scalar<E>]) -> Result<SignatureRecid<E>, Error> {
         let mut s = s_vec.iter().fold(self.s_i.clone(), |acc, x| acc + x);
         let s_bn = s.to_bigint();
 
-        let r = Scalar::<Secp256k1>::from(
+        let r = Scalar::<E>::from(
             &self
                 .R
                 .x_coord()
                 .unwrap()
-                .mod_floor(Scalar::<Secp256k1>::group_order()),
+                .mod_floor(Scalar::<E>::group_order()),
         );
         let ry: BigInt = self
             .R
             .y_coord()
             .unwrap()
-            .mod_floor(Scalar::<Secp256k1>::group_order());
+            .mod_floor(Scalar::<E>::group_order());
 
         /*
          Calculate recovery id - it is not possible to compute the public key out of the signature
@@ -895,9 +895,9 @@ impl LocalSignature {
         */
         let is_ry_odd = ry.test_bit(0);
         let mut recid = if is_ry_odd { 1 } else { 0 };
-        let s_tag_bn = Scalar::<Secp256k1>::group_order() - &s_bn;
+        let s_tag_bn = Scalar::<E>::group_order() - &s_bn;
         if s_bn > s_tag_bn {
-            s = Scalar::<Secp256k1>::from(&s_tag_bn);
+            s = Scalar::<E>::from(&s_tag_bn);
             recid ^= 1;
         }
         let sig = SignatureRecid { r, s, recid };
@@ -910,9 +910,9 @@ impl LocalSignature {
     }
 }
 
-pub fn verify(sig: &SignatureRecid, y: &Point<Secp256k1>, message: &BigInt) -> Result<(), Error> {
+pub fn verify<E: Curve>(sig: &SignatureRecid<E>, y: &Point<E>, message: &BigInt) -> Result<(), Error> {
     let b = sig.s.invert().unwrap();
-    let a = Scalar::<Secp256k1>::from(message);
+    let a = Scalar::<E>::from(message);
     let u1 = a * &b;
     let u2 = &sig.r * &b;
 
@@ -922,11 +922,11 @@ pub fn verify(sig: &SignatureRecid, y: &Point<Secp256k1>, message: &BigInt) -> R
     // can be faster using shamir trick
 
     if sig.r
-        == Scalar::<Secp256k1>::from(
+        == Scalar::<E>::from(
             &(gu1 + yu2)
                 .x_coord()
                 .unwrap()
-                .mod_floor(Scalar::<Secp256k1>::group_order()),
+                .mod_floor(Scalar::<E>::group_order()),
         )
     {
         Ok(())
